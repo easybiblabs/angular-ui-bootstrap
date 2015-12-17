@@ -24,8 +24,6 @@ template/**/*.js
 .git
 docs
 misc
-src
-template
 .editorconfig
 .gitattributes
 .gitignore
