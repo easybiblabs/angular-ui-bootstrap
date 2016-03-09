@@ -28,8 +28,8 @@ The `$uibModal` service has only one method: `open(options)`.
   When used with `controllerAs` & set to `true`, it will bind the $scope properties onto the controller.
 
 * `controller`
-  _(Type: `function|string`, Example: `MyModalController`)_ -
-  A controller for the modal instance. Allows the controller-as syntax. Has a special `$uibModalInstance` injectable to access the modal instance.
+  _(Type: `function|string|array`, Example: `MyModalController`)_ -
+  A controller for the modal instance, either a controller name as a string, or an inline controller function, optionally wrapped in array notation for dependency injection. Allows the controller-as syntax. Has a special `$uibModalInstance` injectable to access the modal instance.
 
 * `controllerAs`
   _(Type: `string`, Example: `ctrl`)_ - 
@@ -118,6 +118,8 @@ The scope associated with modal's content is augmented with:
   A method that can be used to dismiss a modal, passing a reason.
 
 Those methods make it easy to close a modal window without a need to create a dedicated controller.
+
+Also, when using `bindToController`, you can define an `$onInit` method in the controller that will fire upon initialization.
 
 ---
 

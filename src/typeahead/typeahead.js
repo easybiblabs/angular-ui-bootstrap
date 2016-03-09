@@ -39,6 +39,10 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.debounce', 'ui.bootstrap
       minLength = 1;
     }
 
+    originalScope.$watch(attrs.typeaheadMinLength, function (newVal) {
+        minLength = !newVal && newVal !== 0 ? 1 : newVal;
+    });
+    
     //minimal wait time after last character typed before typeahead kicks-in
     var waitTime = originalScope.$eval(attrs.typeaheadWaitMs) || 0;
 
@@ -46,7 +50,7 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.debounce', 'ui.bootstrap
     var isEditable = originalScope.$eval(attrs.typeaheadEditable) !== false;
     originalScope.$watch(attrs.typeaheadEditable, function (newVal) {
       isEditable = newVal !== false;
-    }); 
+    });
 
     //binding to a variable that indicates if matches are being retrieved asynchronously
     var isLoadingSetter = $parse(attrs.typeaheadLoading).assign || angular.noop;
@@ -125,6 +129,7 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.debounce', 'ui.bootstrap
       element.after(inputsContainer);
       hintInputElem = element.clone();
       hintInputElem.attr('placeholder', '');
+      hintInputElem.attr('tabindex', '-1');
       hintInputElem.val('');
       hintInputElem.css({
         'position': 'absolute',
@@ -151,7 +156,7 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.debounce', 'ui.bootstrap
       id: popupId,
       matches: 'matches',
       active: 'activeIdx',
-      select: 'select(activeIdx)',
+      select: 'select(activeIdx, evt)',
       'move-in-progress': 'moveInProgress',
       query: 'query',
       position: 'position',
@@ -202,7 +207,7 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.debounce', 'ui.bootstrap
       return false;
     };
 
-    var getMatchesAsync = function(inputValue) {
+    var getMatchesAsync = function(inputValue, evt) {
       var locals = {$viewValue: inputValue};
       isLoadingSetter(originalScope, true);
       isNoResultsSetter(originalScope, false);
@@ -238,19 +243,20 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.debounce', 'ui.bootstrap
             if (selectOnExact && scope.matches.length === 1 && inputIsExactMatch(inputValue, 0)) {
               if (angular.isNumber(scope.debounceUpdate) || angular.isObject(scope.debounceUpdate)) {
                 $$debounce(function() {
-                  scope.select(0);
+                  scope.select(0, evt);
                 }, angular.isNumber(scope.debounceUpdate) ? scope.debounceUpdate : scope.debounceUpdate['default']);
               } else {
-                scope.select(0);
+                scope.select(0, evt);
               }
             }
 
             if (showHint) {
               var firstLabel = scope.matches[0].label;
-              if (inputValue.length > 0 && firstLabel.slice(0, inputValue.length).toUpperCase() === inputValue.toUpperCase()) {
+              if (angular.isString(inputValue) &&
+                inputValue.length > 0 &&
+                firstLabel.slice(0, inputValue.length).toUpperCase() === inputValue.toUpperCase()) {
                 hintInputElem.val(inputValue + firstLabel.slice(inputValue.length));
-              }
-              else {
+              } else {
                 hintInputElem.val('');
               }
             }
@@ -329,7 +335,7 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.debounce', 'ui.bootstrap
       isOpenSetter(originalScope, isOpen);
     };
 
-    scope.select = function(activeIdx) {
+    scope.select = function(activeIdx, evt) {
       //called from within the $digest() cycle
       var locals = {};
       var model, item;
@@ -344,7 +350,8 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.debounce', 'ui.bootstrap
       onSelectCallback(originalScope, {
         $item: item,
         $model: model,
-        $label: parserResult.viewMapper(originalScope, locals)
+        $label: parserResult.viewMapper(originalScope, locals),
+        $event: evt
       });
 
       resetMatches();
@@ -363,25 +370,30 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.debounce', 'ui.bootstrap
         return;
       }
 
-      // if there's nothing selected (i.e. focusFirst) and enter or tab is hit, clear the results
-      if (scope.activeIdx === -1 && (evt.which === 9 || evt.which === 13)) {
+      /**
+       * if there's nothing selected (i.e. focusFirst) and enter or tab is hit
+       * or
+       * shift + tab is pressed to bring focus to the previous element
+       * then clear the results
+       */
+      if (scope.activeIdx === -1 && (evt.which === 9 || evt.which === 13) || evt.which === 9 && !!evt.shiftKey) {
         resetMatches();
         scope.$digest();
         return;
       }
 
       evt.preventDefault();
-
+      var target;
       switch (evt.which) {
         case 9:
         case 13:
           scope.$apply(function () {
             if (angular.isNumber(scope.debounceUpdate) || angular.isObject(scope.debounceUpdate)) {
               $$debounce(function() {
-                scope.select(scope.activeIdx);
+                scope.select(scope.activeIdx, evt);
               }, angular.isNumber(scope.debounceUpdate) ? scope.debounceUpdate : scope.debounceUpdate['default']);
             } else {
-              scope.select(scope.activeIdx);
+              scope.select(scope.activeIdx, evt);
             }
           });
           break;
@@ -389,38 +401,42 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.debounce', 'ui.bootstrap
           evt.stopPropagation();
 
           resetMatches();
-          scope.$digest();
+          originalScope.$digest();
           break;
         case 38:
           scope.activeIdx = (scope.activeIdx > 0 ? scope.activeIdx : scope.matches.length) - 1;
           scope.$digest();
-          popUpEl.children()[scope.activeIdx].scrollIntoView(false);
+          target = popUpEl.find('li')[scope.activeIdx];
+          target.parentNode.scrollTop = target.offsetTop;
           break;
         case 40:
           scope.activeIdx = (scope.activeIdx + 1) % scope.matches.length;
           scope.$digest();
-          popUpEl.children()[scope.activeIdx].scrollIntoView(false);
+          target = popUpEl.find('li')[scope.activeIdx];
+          target.parentNode.scrollTop = target.offsetTop;
           break;
       }
     });
 
-    element.bind('focus', function () {
+    element.bind('focus', function (evt) {
       hasFocus = true;
       if (minLength === 0 && !modelCtrl.$viewValue) {
-        getMatchesAsync(modelCtrl.$viewValue);
+        $timeout(function() {
+          getMatchesAsync(modelCtrl.$viewValue, evt);
+        }, 0);
       }
     });
 
-    element.bind('blur', function() {
+    element.bind('blur', function(evt) {
       if (isSelectOnBlur && scope.matches.length && scope.activeIdx !== -1 && !selected) {
         selected = true;
         scope.$apply(function() {
           if (angular.isObject(scope.debounceUpdate) && angular.isNumber(scope.debounceUpdate.blur)) {
             $$debounce(function() {
-              scope.select(scope.activeIdx);
+              scope.select(scope.activeIdx, evt);
             }, scope.debounceUpdate.blur);
           } else {
-            scope.select(scope.activeIdx);
+            scope.select(scope.activeIdx, evt);
           }
         });
       }
@@ -439,7 +455,7 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.debounce', 'ui.bootstrap
       if (element[0] !== evt.target && evt.which !== 3 && scope.matches.length !== 0) {
         resetMatches();
         if (!$rootScope.$$phase) {
-          scope.$digest();
+          originalScope.$digest();
         }
       }
     };
@@ -583,14 +599,14 @@ angular.module('ui.bootstrap.typeahead', ['ui.bootstrap.debounce', 'ui.bootstrap
           scope.active = matchIdx;
         };
 
-        scope.selectMatch = function(activeIdx) {
+        scope.selectMatch = function(activeIdx, evt) {
           var debounce = scope.debounce();
           if (angular.isNumber(debounce) || angular.isObject(debounce)) {
             $$debounce(function() {
-              scope.select({activeIdx: activeIdx});
+              scope.select({activeIdx: activeIdx, evt: evt});
             }, angular.isNumber(debounce) ? debounce : debounce['default']);
           } else {
-            scope.select({activeIdx: activeIdx});
+            scope.select({activeIdx: activeIdx, evt: evt});
           }
         };
       }

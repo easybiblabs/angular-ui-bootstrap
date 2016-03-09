@@ -1,5 +1,6 @@
 var marked = require('marked');
 var fs = require('fs');
+var _ = require('lodash');
 
 module.exports = function(grunt) {
   require('load-grunt-tasks')(grunt);
@@ -8,8 +9,8 @@ module.exports = function(grunt) {
   grunt.util.linefeed = '\n';
 
   grunt.initConfig({
-    ngversion: '1.4.7',
-    bsversion: '3.3.5',
+    ngversion: '1.5.0',
+    bsversion: '3.3.6',
     modules: [],//to be filled in by build task
     pkg: grunt.file.readJSON('package.json'),
     dist: 'dist',
@@ -22,12 +23,14 @@ module.exports = function(grunt) {
       cssInclude: '',
       cssFileBanner: '/* Include this file in your html if you are using the CSP mode. */\n\n',
       cssFileDest: '<%= dist %>/<%= filename %>-<%= pkg.version %>-csp.css',
-      banner: ['/*',
-               ' * <%= pkg.name %>',
-               ' * <%= pkg.homepage %>\n',
-               ' * Version: <%= pkg.version %> - <%= grunt.template.today("yyyy-mm-dd") %>',
-               ' * License: <%= pkg.license %>',
-               ' */\n'].join('\n')
+      banner: [
+        '/*',
+        ' * <%= pkg.name %>',
+        ' * <%= pkg.homepage %>\n',
+        ' * Version: <%= pkg.version %> - <%= grunt.template.today("yyyy-mm-dd") %>',
+        ' * License: <%= pkg.license %>',
+        ' */'
+      ].join('\n')
     },
     delta: {
       docs: {
@@ -39,7 +42,7 @@ module.exports = function(grunt) {
         tasks: ['html2js', 'karma:watch:run']
       },
       js: {
-        files: ['src/**/*.js'],
+        files: ['src/**/*.js', '!src/**/index.js'],
         tasks: ['karma:watch:run']
       }
     },
@@ -158,7 +161,7 @@ module.exports = function(grunt) {
       }
     },
     shell: {
-      //We use %version% and evluate it at run-time, because <%= pkg.version %>
+      //We use %version% and evaluate it at run-time, because <%= pkg.version %>
       //is only evaluated once
       'release-prepare': [
         'grunt before-test after-test',
@@ -219,17 +222,17 @@ module.exports = function(grunt) {
       });
     }
     function enquote(str) {
-      return '"' + str + '"';
+      return `"${str}"`;
     }
     function enquoteUibDir(str) {
-      return enquote('uib/' + str);
+      return enquote(`uib/${str}`);
     }
 
     var module = {
       name: name,
       moduleName: enquote(`ui.bootstrap.${name}`),
       displayName: ucwords(breakup(name, ' ')),
-      srcFiles: grunt.file.expand(`src/${name}/*.js`),
+      srcFiles: grunt.file.expand([`src/${name}/*.js`, `!src/${name}/index.js`]),
       cssFiles: grunt.file.expand(`src/${name}/*.css`),
       tplFiles: grunt.file.expand(`template/${name}/*.html`),
       tpljsFiles: grunt.file.expand(`template/${name}/*.html.js`),
@@ -237,9 +240,7 @@ module.exports = function(grunt) {
       dependencies: dependenciesForModule(name),
       docs: {
         md: grunt.file.expand(`src/${name}/docs/*.md`)
-          .map(grunt.file.read).map(function(str) {
-            return marked(str);
-          }).join('\n'),
+          .map(grunt.file.read).map((str) => marked(str)).join('\n'),
         js: grunt.file.expand(`src/${name}/docs/*.js`)
           .map(grunt.file.read).join('\n'),
         html: grunt.file.expand(`src/${name}/docs/*.html`)
@@ -251,7 +252,7 @@ module.exports = function(grunt) {
       css: [],
       js: []
     };
-    module.cssFiles.forEach(processCSS.bind(null, styles, true));
+    module.cssFiles.forEach(processCSS.bind(null, module.name, styles, true));
     if (styles.css.length) {
       module.css = styles.css.join('\n');
       module.cssJs = styles.js.join('\n');
@@ -263,7 +264,7 @@ module.exports = function(grunt) {
 
   function dependenciesForModule(name) {
     var deps = [];
-    grunt.file.expand('src/' + name + '/*.js')
+    grunt.file.expand([`src/${name}/*.js`, `!src/${name}/index.js`])
     .map(grunt.file.read)
     .forEach(function(contents) {
       //Strategy: find where module is declared,
@@ -301,19 +302,17 @@ module.exports = function(grunt) {
     } else {
       grunt.file.expand({
         filter: 'isDirectory', cwd: '.'
-      }, 'src/*').forEach(function(dir) {
+      }, 'src/*').forEach((dir) => {
         findModule(dir.split('/')[1]);
       });
     }
 
     var modules = grunt.config('modules');
     grunt.config('srcModules', _.pluck(modules, 'moduleName'));
-    grunt.config('tplModules', _.pluck(modules, 'tplModules').filter(function(tpls) { return tpls.length > 0;} ));
+    grunt.config('tplModules', _.pluck(modules, 'tplModules').filter((tpls) => tpls.length > 0));
     grunt.config('demoModules', modules
-      .filter(function(module) {
-        return module.docs.md && module.docs.js && module.docs.html;
-      })
-      .sort(function(a, b) {
+      .filter((module) => module.docs.md && module.docs.js && module.docs.html)
+      .sort((a, b) => {
         if (a.name < b.name) { return -1; }
         if (a.name > b.name) { return 1; }
         return 0;
@@ -332,9 +331,7 @@ module.exports = function(grunt) {
     }
 
     var moduleFileMapping = _.clone(modules, true);
-    moduleFileMapping.forEach(function (module) {
-      delete module.docs;
-    });
+    moduleFileMapping.forEach((module) => delete module.docs);
 
     grunt.config('moduleFileMapping', moduleFileMapping);
 
@@ -350,14 +347,14 @@ module.exports = function(grunt) {
     grunt.task.run(['concat', 'uglify', 'makeModuleMappingFile', 'makeRawFilesJs', 'makeVersionsMappingFile']);
   });
 
-  grunt.registerTask('test', 'Run tests on singleRun karma server', function () {
+  grunt.registerTask('test', 'Run tests on singleRun karma server', function() {
     //this task can be executed in 3 different environments: local, Travis-CI and Jenkins-CI
     //we need to take settings for each one into account
     if (process.env.TRAVIS) {
       grunt.task.run('karma:travis');
     } else {
       var isToRunJenkinsTask = !!this.args.length;
-      if(grunt.option('coverage')) {
+      if (grunt.option('coverage')) {
         var karmaOptions = grunt.config.get('karma.options'),
           coverageOpts = grunt.config.get('karma.coverage');
         grunt.util._.extend(karmaOptions, coverageOpts);
@@ -367,7 +364,7 @@ module.exports = function(grunt) {
     }
   });
 
-  grunt.registerTask('makeModuleMappingFile', function () {
+  grunt.registerTask('makeModuleMappingFile', function() {
     var _ = grunt.util._;
     var moduleMappingJs = 'dist/assets/module-mapping.json';
     var moduleMappings = grunt.config('moduleFileMapping');
@@ -377,7 +374,7 @@ module.exports = function(grunt) {
     grunt.log.writeln('File ' + moduleMappingJs.cyan + ' created.');
   });
 
-  grunt.registerTask('makeRawFilesJs', function () {
+  grunt.registerTask('makeRawFilesJs', function() {
     var _ = grunt.util._;
     var jsFilename = 'dist/assets/raw-files.json';
     var genRawFilesJs = require('./misc/raw-files-generator');
@@ -386,7 +383,7 @@ module.exports = function(grunt) {
                   grunt.config('meta.banner'), grunt.config('meta.cssFileBanner'));
   });
 
-  grunt.registerTask('makeVersionsMappingFile', function () {
+  grunt.registerTask('makeVersionsMappingFile', function() {
     var done = this.async();
 
     var exec = require('child_process').exec;
@@ -397,11 +394,13 @@ module.exports = function(grunt) {
       // Let's remove the oldest 14 versions.
       var versions = stdout.split('\n').slice(0, -14);
       var jsContent = versions.map(function(version) {
+        version = version.replace(/^v/, '');
         return {
           version: version,
           url: `/bootstrap/versioned-docs/${version}`
         };
       });
+      jsContent = _.sortBy(jsContent, 'version').reverse();
       jsContent.unshift({
         version: 'Current',
         url: '/bootstrap'
@@ -417,7 +416,7 @@ module.exports = function(grunt) {
    * Logic from AngularJS
    * https://github.com/angular/angular.js/blob/36831eccd1da37c089f2141a2c073a6db69f3e1d/lib/grunt/utils.js#L121-L145
    */
-  function processCSS(state, minify, file) {
+  function processCSS(moduleName, state, minify, file) {
     var css = fs.readFileSync(file).toString(),
       js;
     state.css.push(css);
@@ -437,7 +436,7 @@ module.exports = function(grunt) {
       .replace(/\\/g, '\\\\')
       .replace(/'/g, "\\'")
       .replace(/\r?\n/g, '\\n');
-    js = `angular.module('ui.bootstrap.carousel').run(function() {!angular.$$csp() && angular.element(document).find('head').prepend('<style type="text/css">${css}</style>'); })`;
+    js = `angular.module('ui.bootstrap.${moduleName}').run(function() {!angular.$$csp().noInlineStyle && !angular.$$uib${_.capitalize(moduleName)}Css && angular.element(document).find('head').prepend('<style type="text/css">${css}</style>'); angular.$$uib${_.capitalize(moduleName)}Css = true; });`;
     state.js.push(js);
 
     return state;

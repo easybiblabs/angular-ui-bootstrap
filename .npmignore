@@ -14,12 +14,10 @@ pids
 logs
 results
 # test coverage files
-coverage/
+.coverage/
 
 node_modules
 npm-debug.log
-
-template/**/*.js
 
 .git
 docs

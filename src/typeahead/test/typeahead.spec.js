@@ -64,10 +64,14 @@ describe('typeahead tests', function() {
     return findDropDown(element).find('li');
   };
 
-  var triggerKeyDown = function(element, keyCode) {
+  var triggerKeyDown = function(element, keyCode, options) {
+    options = options || {};
     var inputEl = findInput(element);
     var e = $.Event('keydown');
     e.which = keyCode;
+    if (options.shiftKey) {
+      e.shiftKey = true;
+    }
     inputEl.trigger(e);
   };
 
@@ -195,6 +199,30 @@ describe('typeahead tests', function() {
       changeInputValueTo(element, 'b');
       expect(element).toBeClosed();
     });
+
+
+    it('should support changing min-length', function() {
+        $scope.typeAheadMinLength = 2;	
+        var element = prepareInputEl('<div><input ng-model="result" uib-typeahead="item for item in source | filter:$viewValue" typeahead-min-length="typeAheadMinLength"></div>');
+
+        changeInputValueTo(element, 'b');
+
+        expect(element).toBeClosed();
+
+        $scope.typeAheadMinLength = 0;
+        $scope.$digest();
+        changeInputValueTo(element, '');
+
+        expect(element).toBeOpenWithActive(3, 0);
+
+        $scope.typeAheadMinLength = 2;
+        $scope.$digest();
+        changeInputValueTo(element, 'b');
+
+        expect(element).toBeClosed();
+    });
+
+
 
     it('should support custom model selecting function', function() {
       $scope.updaterFn = function(selectedItem) {
@@ -478,12 +506,13 @@ describe('typeahead tests', function() {
     });
 
     it('should invoke select callback on select', function() {
-      $scope.onSelect = function($item, $model, $label) {
+      $scope.onSelect = function($item, $model, $label, $event) {
         $scope.$item = $item;
         $scope.$model = $model;
         $scope.$label = $label;
+        $scope.$event = $event;
       };
-      var element = prepareInputEl('<div><input ng-model="result" typeahead-on-select="onSelect($item, $model, $label)" uib-typeahead="state.code as state.name for state in states | filter:$viewValue"></div>');
+      var element = prepareInputEl('<div><input ng-model="result" typeahead-on-select="onSelect($item, $model, $label, $event)" uib-typeahead="state.code as state.name for state in states | filter:$viewValue"></div>');
 
       changeInputValueTo(element, 'Alas');
       triggerKeyDown(element, 13);
@@ -492,6 +521,7 @@ describe('typeahead tests', function() {
       expect($scope.$item).toEqual($scope.states[0]);
       expect($scope.$model).toEqual('AL');
       expect($scope.$label).toEqual('Alaska');
+      expect($scope.$event.type).toEqual("keydown");
     });
 
     it('should correctly update inputs value on mapping where label is not derived from the model', function() {
@@ -687,23 +717,36 @@ describe('typeahead tests', function() {
 
     it('should activate prev/next matches on up/down keys', function() {
       changeInputValueTo(element, 'b');
-      expect(element).toBeOpenWithActive(2, 0);
+      var parentNode = element.find('ul').eq(0)[0];
+      var liIndex;
+
+      liIndex = 0;
+      expect(element).toBeOpenWithActive(2, liIndex);
+      expect(parentNode.scrollTop).toEqual(element.find('li').eq(liIndex)[0].offsetTop);
 
       // Down arrow key
       triggerKeyDown(element, 40);
-      expect(element).toBeOpenWithActive(2, 1);
+      liIndex = 1;
+      expect(element).toBeOpenWithActive(2, liIndex);
+      expect(parentNode.scrollTop).toEqual(element.find('li').eq(liIndex)[0].offsetTop);
 
       // Down arrow key goes back to first element
       triggerKeyDown(element, 40);
-      expect(element).toBeOpenWithActive(2, 0);
+      liIndex = 0;
+      expect(element).toBeOpenWithActive(2, liIndex);
+      expect(parentNode.scrollTop).toEqual(element.find('li').eq(liIndex)[0].offsetTop);
 
       // Up arrow key goes back to last element
       triggerKeyDown(element, 38);
-      expect(element).toBeOpenWithActive(2, 1);
+      liIndex = 1;
+      expect(element).toBeOpenWithActive(2, liIndex);
+      expect(parentNode.scrollTop).toEqual(element.find('li').eq(liIndex)[0].offsetTop);
 
       // Up arrow key goes back to first element
       triggerKeyDown(element, 38);
-      expect(element).toBeOpenWithActive(2, 0);
+      liIndex = 0;
+      expect(parentNode.scrollTop).toEqual(element.find('li').eq(liIndex)[0].offsetTop);
+      expect(element).toBeOpenWithActive(2, liIndex);
     });
 
     it('should close popup on escape key', function() {
@@ -1172,6 +1215,11 @@ describe('typeahead tests', function() {
       triggerKeyDown(element, 27);
       expect(hintEl.val()).toEqual('');
     });
+
+    it("should set tab index on hint input element", function(){
+      var hintEl = findInput(element);
+      expect(hintEl.attr('tabindex')).toEqual('-1');
+    });
   });
 
   describe('append to', function() {
@@ -1307,6 +1355,23 @@ describe('typeahead tests', function() {
     expect(element).toBeClosed();
   });
 
+  it("should not capture tab when shift key is pressed", function(){
+    $scope.select_count = 0;
+    $scope.onSelect = function($item, $model, $label) {
+      $scope.select_count = $scope.select_count + 1;
+    };
+    var element = prepareInputEl('<div><input ng-model="result" ng-keydown="keyDownEvent = $event" uib-typeahead="item for item in source | filter:$viewValue" typeahead-on-select="onSelect($item, $model, $label)" typeahead-focus-first="false"></div>');
+    changeInputValueTo(element, 'b');
+
+    // down key should be captured and focus first element
+    triggerKeyDown(element, 40);
+
+    triggerKeyDown(element, 9, {shiftKey: true});
+    expect($scope.keyDownEvent.isDefaultPrevented()).toBeFalsy();
+    expect($scope.select_count).toEqual(0);
+    expect(element).toBeClosed();
+  });
+
   it('should capture enter or tab when an item is focused', function() {
     $scope.select_count = 0;
     $scope.onSelect = function($item, $model, $label) {
@@ -1337,6 +1402,7 @@ describe('typeahead tests', function() {
       var element = prepareInputEl('<div><input ng-model="result" uib-typeahead="item for item in source | filter:$viewValue" typeahead-min-length="0"></div>');
       var inputEl = findInput(element);
       inputEl.focus();
+      $timeout.flush();
       $scope.$digest();
       expect(element).toBeOpenWithActive(3, 0);
     });
