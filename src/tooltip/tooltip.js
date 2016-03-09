@@ -113,19 +113,20 @@ angular.module('ui.bootstrap.tooltip', ['ui.bootstrap.position', 'ui.bootstrap.s
       var startSym = $interpolate.startSymbol();
       var endSym = $interpolate.endSymbol();
       var template =
-        '<div '+ directiveName + '-popup '+
-          'title="' + startSym + 'title' + endSym + '" '+
+        '<sat-div data-'+ directiveName + '-popup="popup" '+
+          'data-title="' + startSym + 'title' + endSym + '" '+
           (options.useContentExp ?
-            'content-exp="contentExp()" ' :
-            'content="' + startSym + 'content' + endSym + '" ') +
-          'placement="' + startSym + 'placement' + endSym + '" '+
-          'popup-class="' + startSym + 'popupClass' + endSym + '" '+
-          'animation="animation" ' +
-          'is-open="isOpen"' +
-          'origin-scope="origScope" ' +
+            'data-content-exp="contentExp()" ' :
+          'data-content="' + startSym + 'content' + endSym + '" ') +
+          'data-placement="' + startSym + 'placement' + endSym + '" '+
+          'data-popup-class="' + startSym + 'popupClass' + endSym + '" '+
+          'data-animation="animation" ' +
+          'data-is-open="isOpen" ' +
+          'data-origin-scope="origScope" ' +
           'style="visibility: hidden; display: block; top: -9999px; left: -9999px;"' +
           '>' +
-        '</div>';
+        '</sat-div>';
+
 
       return {
         compile: function(tElem, tAttrs) {
